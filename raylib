@@ -1,0 +1,570 @@
+#include "raylib.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+#include <stdbool.h>
+
+const int screenWidth = 800;
+const int screenHeight = 600;
+
+const int BOARD_SIZE_PIXELS = 450;
+const int CELL_SIZE_PIXELS = BOARD_SIZE_PIXELS / 3;
+const int BOARD_OFFSET_X = (screenWidth - BOARD_SIZE_PIXELS) / 2;
+const int BOARD_OFFSET_Y = (screenHeight - BOARD_SIZE_PIXELS) / 2 - 50;
+
+const int MARK_FONT_SIZE = CELL_SIZE_PIXELS * 0.7;
+
+char markP1;
+char markP2;
+char markC;
+
+char board[3][3];
+char currentPlayerMark;
+bool gameIsOver;
+char gameWinner;
+int currentTurn;
+bool playerStarts;
+
+typedef enum GameScreen {
+    MENU = 0,
+    GAMEPLAY_TWO_PLAYER,
+    GAMEPLAY_VS_COMPUTER,
+    GAME_OVER,
+    EXIT,
+} GameScreen;
+
+GameScreen currentScreen;
+
+Rectangle menuBtnTwoPlayer = { (float)screenWidth/2 - 150, (float)screenHeight/2 - 80, 300, 60 };
+Rectangle menuBtnVsComputer = { (float)screenWidth/2 - 150, (float)screenHeight/2 + 0, 300, 60 };
+Rectangle playAgainBtn = { (float)screenWidth/2 - 100, (float)screenHeight - 150, 200, 50 };
+Rectangle exitGameBtn = { (float)screenWidth/2 - 100, (float)screenHeight - 80, 200, 50 };
+
+
+void fillspaces(char board[3][3]);
+bool isOccupied(char board[3][3], int x, int y);
+int checkRowWin(char board[3][3], char player_mark);
+int checkColWin(char board[3][3], char player_mark);
+int checkPrimaryDiagonalWin(char board[3][3], char player_mark);
+int checkSecondaryDiagonalWin(char board[3][3], char player_mark);
+int checkResult(char markA, char markB);
+
+int rowwiseMove(char arr[3][3], int* X, int* Y, char mark);
+int colwiseMove(char arr[3][3], int* X, int* Y, char mark);
+int primaryDiagonalMove(char arr[3][3], int* X, int* Y, char mark);
+int secDiagonalMove(char arr[3][3], int* X, int* Y, char mark);
+int bestMoveCheck(char arr[3][3], int* x, int* y);
+int bestMoveBlock(char arr[3][3], int* x, int* y);
+void computerTurn(char board[3][3], int* x, int* y);
+
+void initializeGame();
+
+void drawBoardGrid();
+void drawMarks();
+void drawGameMessages();
+
+void updateMenuScreen();
+void updateTwoPlayerGame();
+void updateVsComputerGame();
+void updateGameOverScreen();
+
+void initializeGame() {
+    for (int r = 0; r < 3; r++) {
+        for (int c = 0; c < 3; c++) {
+            board[r][c] = ' ';
+        }
+    }
+    currentTurn = 0;
+    gameIsOver = false;
+    gameWinner = ' ';
+    currentPlayerMark = markP1;
+}
+
+void fillspaces(char arr[3][3]){
+    for(int i = 0; i < 3; ++i){
+        for(int j = 0; j < 3; ++j){
+            arr[i][j] = ' ';
+        }
+    }
+}
+
+bool isOccupied(char arr[3][3], int x, int y) {
+    if (x < 0 || x > 2 || y < 0 || y > 2) {
+        return true;
+    }
+    return arr[x][y] != ' ';
+}
+
+int checkRowWin(char arr[3][3], char player_mark) {
+    for (int i = 0; i < 3; ++i) {
+        if (arr[i][0] == player_mark && arr[i][1] == player_mark && arr[i][2] == player_mark) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+int checkColWin(char arr[3][3], char player_mark) {
+    for (int i = 0; i < 3; ++i) {
+        if (arr[0][i] == player_mark && arr[1][i] == player_mark && arr[2][i] == player_mark) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+int checkPrimaryDiagonalWin(char arr[3][3], char player_mark) {
+    if (arr[0][0] == player_mark && arr[1][1] == player_mark && arr[2][2] == player_mark) {
+        return 1;
+    }
+    return 0;
+}
+
+int checkSecondaryDiagonalWin(char arr[3][3], char player_mark) {
+    if (arr[0][2] == player_mark && arr[1][1] == player_mark && arr[2][0] == player_mark) {
+        return 1;
+    }
+    return 0;
+}
+
+int checkResult(char markA, char markB) {
+    if (checkRowWin(board, markA) ||
+        checkColWin(board, markA) ||
+        checkPrimaryDiagonalWin(board, markA) ||
+        checkSecondaryDiagonalWin(board, markA)) {
+        gameWinner = markA;
+        gameIsOver = true;
+        return 1;
+    }
+
+    if (currentTurn == 9) {
+        gameWinner = 'D';
+        gameIsOver = true;
+        return 1;
+    }
+
+    return 0;
+}
+
+int rowwiseMove(char arr[3][3], int* X, int* Y, char mark) {
+    char opponentMark = (mark == markP1) ? markC : markP1;
+    for (int i = 0; i < 3; ++i) {
+        int countMark = 0;
+        int emptyX = -1, emptyY = -1;
+        bool blocked = false;
+
+        for (int j = 0; j < 3; ++j) {
+            if (arr[i][j] == mark) {
+                countMark++;
+            } else if (arr[i][j] == ' ') {
+                emptyX = i;
+                emptyY = j;
+            } else if (arr[i][j] == opponentMark) {
+                blocked = true;
+                break;
+            }
+        }
+        if (!blocked && countMark == 2 && emptyX != -1) {
+            *X = emptyX;
+            *Y = emptyY;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+int colwiseMove(char arr[3][3], int* X, int* Y, char mark) {
+    char opponentMark = (mark == markP1) ? markC : markP1;
+    for (int i = 0; i < 3; ++i) {
+        int countMark = 0;
+        int emptyX = -1, emptyY = -1;
+        bool blocked = false;
+
+        for (int j = 0; j < 3; ++j) {
+            if (arr[j][i] == mark) {
+                countMark++;
+            } else if (arr[j][i] == ' ') {
+                emptyX = j;
+                emptyY = i;
+            } else if (arr[j][i] == opponentMark) {
+                blocked = true;
+                break;
+            }
+        }
+        if (!blocked && countMark == 2 && emptyX != -1) {
+            *X = emptyX;
+            *Y = emptyY;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+int primaryDiagonalMove(char arr[3][3], int* X, int* Y, char mark) {
+    int countMark = 0;
+    int emptyX = -1, emptyY = -1;
+    char opponentMark = (mark == markP1) ? markC : markP1;
+
+    for (int i = 0; i < 3; ++i) {
+        if (arr[i][i] == mark) {
+            countMark++;
+        } else if (arr[i][i] == ' ') {
+            emptyX = i;
+            emptyY = i;
+        } else if (arr[i][i] == opponentMark) {
+            return 0;
+        }
+    }
+
+    if (countMark == 2 && emptyX != -1) {
+        *X = emptyX;
+        *Y = emptyY;
+        return 1;
+    }
+    return 0;
+}
+
+int secDiagonalMove(char arr[3][3], int* X, int* Y, char mark) {
+    int countMark = 0;
+    int emptyX = -1, emptyY = -1;
+    char opponentMark = (mark == markP1) ? markC : markP1;
+
+    for (int i = 0; i < 3; ++i) {
+        if (arr[i][2-i] == mark) {
+            countMark++;
+        } else if (arr[i][2-i] == ' ') {
+            emptyX = i;
+            emptyY = 2-i;
+        } else if (arr[i][2-i] == opponentMark) {
+            return 0;
+        }
+    }
+
+    if (countMark == 2 && emptyX != -1) {
+        *X = emptyX;
+        *Y = emptyY;
+        return 1;
+    }
+    return 0;
+}
+
+int bestMoveCheck(char arr[3][3], int* x, int* y) {
+    if (rowwiseMove(arr, x, y, markC)) return 1;
+    if (colwiseMove(arr, x, y, markC)) return 1;
+    if (primaryDiagonalMove(arr, x, y, markC)) return 1;
+    if (secDiagonalMove(arr, x, y, markC)) return 1;
+    return 0;
+}
+
+int bestMoveBlock(char arr[3][3], int* x, int* y) {
+    if (rowwiseMove(arr, x, y, markP1)) return 1;
+    if (colwiseMove(arr, x, y, markP1)) return 1;
+    if (primaryDiagonalMove(arr, x, y, markP1)) return 1;
+    if (secDiagonalMove(arr, x, y, markP1)) return 1;
+    return 0;
+}
+
+void computerTurn(char board[3][3], int* x, int* y) {
+    if (bestMoveCheck(board, x, y)) {
+        return;
+    }
+    if (bestMoveBlock(board, x, y)) {
+        return;
+    }
+    if (board[1][1] == ' ') {
+        *x = 1;
+        *y = 1;
+        return;
+    }
+    int corners[4][2] = {{0,0}, {0,2}, {2,0}, {2,2}};
+    for (int i = 0; i < 4; ++i) {
+        int x_cand = corners[i][0];
+        int y_cand = corners[i][1];
+        if (board[x_cand][y_cand] == ' ') {
+            *x = x_cand;
+            *y = y_cand;
+            return;
+        }
+    }
+    int sides[4][2] = {{0,1}, {1,0}, {1,2}, {2,1}};
+    for (int i = 0; i < 4; ++i) {
+        int x_cand = sides[i][0];
+        int y_cand = sides[i][1];
+        if (board[x_cand][y_cand] == ' ') {
+            *x = x_cand;
+            *y = y_cand;
+            return;
+        }
+    }
+    do {
+        *x = rand() % 3;
+        *y = rand() % 3;
+    } while (isOccupied(board, *x, *y));
+}
+
+
+void drawBoardGrid() {
+    DrawLine(BOARD_OFFSET_X, BOARD_OFFSET_Y + CELL_SIZE_PIXELS,
+             BOARD_OFFSET_X + BOARD_SIZE_PIXELS, BOARD_OFFSET_Y + CELL_SIZE_PIXELS,
+             BLACK);
+    DrawLine(BOARD_OFFSET_X, BOARD_OFFSET_Y + 2 * CELL_SIZE_PIXELS,
+             BOARD_OFFSET_X + BOARD_SIZE_PIXELS, BOARD_OFFSET_Y + 2 * CELL_SIZE_PIXELS,
+             BLACK);
+
+    DrawLine(BOARD_OFFSET_X + CELL_SIZE_PIXELS, BOARD_OFFSET_Y,
+             BOARD_OFFSET_X + CELL_SIZE_PIXELS, BOARD_OFFSET_Y + BOARD_SIZE_PIXELS,
+             BLACK);
+    DrawLine(BOARD_OFFSET_X + 2 * CELL_SIZE_PIXELS, BOARD_OFFSET_Y,
+             BOARD_OFFSET_X + 2 * CELL_SIZE_PIXELS, BOARD_OFFSET_Y + BOARD_SIZE_PIXELS,
+             BLACK);
+
+    DrawRectangleLines(BOARD_OFFSET_X, BOARD_OFFSET_Y,
+                       BOARD_SIZE_PIXELS, BOARD_SIZE_PIXELS,
+                       BLACK);
+}
+
+void drawMarks() {
+    for (int r = 0; r < 3; r++) {
+        for (int c = 0; c < 3; c++) {
+            int cellCenterX = BOARD_OFFSET_X + c * CELL_SIZE_PIXELS + CELL_SIZE_PIXELS / 2;
+            int cellCenterY = BOARD_OFFSET_Y + r * CELL_SIZE_PIXELS + CELL_SIZE_PIXELS / 2;
+
+            Color markColor = BLACK;
+            if (board[r][c] == 'X') {
+                markColor = BLUE;
+                DrawLineEx((Vector2){cellCenterX - MARK_FONT_SIZE / 2, cellCenterY - MARK_FONT_SIZE / 2},
+                           (Vector2){cellCenterX + MARK_FONT_SIZE / 2, cellCenterY + MARK_FONT_SIZE / 2},
+                           5, markColor);
+                DrawLineEx((Vector2){cellCenterX - MARK_FONT_SIZE / 2, cellCenterY + MARK_FONT_SIZE / 2},
+                           (Vector2){cellCenterX + MARK_FONT_SIZE / 2, cellCenterY - MARK_FONT_SIZE / 2},
+                           5, markColor);
+            } else if (board[r][c] == 'O') {
+                markColor = RED;
+                DrawCircleLines(cellCenterX, cellCenterY, MARK_FONT_SIZE / 2, markColor);
+            }
+        }
+    }
+}
+
+void drawGameMessages() {
+    int messagePosY = BOARD_OFFSET_Y + BOARD_SIZE_PIXELS + 20;
+    Color messageColor = DARKGRAY;
+    const char* messageText = "";
+
+    if (!gameIsOver) {
+        messageText = TextFormat("Current Turn: %c", currentPlayerMark);
+        messageColor = (currentPlayerMark == 'X') ? BLUE : RED;
+    } else {
+        if (gameWinner == 'X') {
+            messageText = TextFormat("%c WINS!", gameWinner);
+            messageColor = GREEN;
+        } else if (gameWinner == 'O') {
+            messageText = TextFormat("%c WINS!", gameWinner);
+            messageColor = GREEN;
+        } else if (gameWinner == 'D') {
+            messageText = "IT'S A DRAW!";
+            messageColor = ORANGE;
+        }
+    }
+
+    int textWidth = MeasureText(messageText, 30);
+    DrawText(messageText, (screenWidth - textWidth) / 2, messagePosY, 30, messageColor);
+}
+
+void updateMenuScreen() {
+    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+        Vector2 mousePoint = GetMousePosition();
+
+        if (CheckCollisionPointRec(mousePoint, menuBtnTwoPlayer)) {
+            markP1 = 'X';
+            markP2 = 'O';
+            initializeGame();
+            currentScreen = GAMEPLAY_TWO_PLAYER;
+        } else if (CheckCollisionPointRec(mousePoint, menuBtnVsComputer)) {
+            markP1 = 'X';
+            markC = 'O';
+            playerStarts = true;
+            initializeGame();
+            currentScreen = GAMEPLAY_VS_COMPUTER;
+        }
+    }
+}
+
+void updateTwoPlayerGame() {
+    if (gameIsOver) {
+        currentScreen = GAME_OVER;
+        return;
+    }
+
+    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+        Vector2 mousePos = GetMousePosition();
+        int clickedRow = -1, clickedCol = -1;
+
+        if (mousePos.x >= BOARD_OFFSET_X && mousePos.x < BOARD_OFFSET_X + BOARD_SIZE_PIXELS &&
+            mousePos.y >= BOARD_OFFSET_Y && mousePos.y < BOARD_OFFSET_Y + BOARD_SIZE_PIXELS) {
+            clickedCol = (mousePos.x - BOARD_OFFSET_X) / CELL_SIZE_PIXELS;
+            clickedRow = (mousePos.y - BOARD_OFFSET_Y) / CELL_SIZE_PIXELS;
+        }
+
+        if (clickedRow != -1 && clickedCol != -1) {
+            if (!isOccupied(board, clickedRow, clickedCol)) {
+                board[clickedRow][clickedCol] = currentPlayerMark;
+                currentTurn++;
+
+                if (checkResult(currentPlayerMark, (currentPlayerMark == markP1 ? markP2 : markP1))) {
+
+                } else {
+                    currentPlayerMark = (currentPlayerMark == markP1) ? markP2 : markP1;
+                }
+            }
+        }
+    }
+}
+
+void updateVsComputerGame() {
+    if (gameIsOver) {
+        currentScreen = GAME_OVER;
+        return;
+    }
+
+    if ((playerStarts && currentTurn % 2 == 0) || (!playerStarts && currentTurn % 2 != 0)) {
+        if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            Vector2 mousePos = GetMousePosition();
+            int clickedRow = -1, clickedCol = -1;
+
+            if (mousePos.x >= BOARD_OFFSET_X && mousePos.x < BOARD_OFFSET_X + BOARD_SIZE_PIXELS &&
+                mousePos.y >= BOARD_OFFSET_Y && mousePos.y < BOARD_OFFSET_Y + BOARD_SIZE_PIXELS) {
+                clickedCol = (mousePos.x - BOARD_OFFSET_X) / CELL_SIZE_PIXELS;
+                clickedRow = (mousePos.y - BOARD_OFFSET_Y) / CELL_SIZE_PIXELS;
+            }
+
+            if (clickedRow != -1 && clickedCol != -1) {
+                if (!isOccupied(board, clickedRow, clickedCol)) {
+                    board[clickedRow][clickedCol] = markP1;
+                    currentTurn++;
+
+                    if (checkResult(markP1, markC)) {
+
+                    } else {
+                        currentPlayerMark = markC;
+                    }
+                }
+            }
+        }
+    }
+    else {
+        if (currentTurn < 9 && !gameIsOver) {
+            int compX, compY;
+            computerTurn(board, &compX, &compY);
+            board[compX][compY] = markC;
+            currentTurn++;
+
+            if (checkResult(markC, markP1)) {
+
+            } else {
+                currentPlayerMark = markP1;
+            }
+        }
+    }
+}
+
+void updateGameOverScreen() {
+    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+        Vector2 mousePoint = GetMousePosition();
+
+        if (CheckCollisionPointRec(mousePoint, playAgainBtn)) {
+            currentScreen = MENU;
+        } else if (CheckCollisionPointRec(mousePoint, exitGameBtn)) {
+            currentScreen = EXIT;
+        }
+    }
+}
+
+
+int main() {
+    srand(time(NULL));
+
+    InitWindow(screenWidth, screenHeight, "Graphical Tic-Tac-Toe");
+    SetTargetFPS(60);
+
+    currentScreen = MENU;
+
+    while (!WindowShouldClose() && currentScreen != EXIT) {
+        switch (currentScreen) {
+            case MENU:
+                updateMenuScreen();
+                break;
+            case GAMEPLAY_TWO_PLAYER:
+                updateTwoPlayerGame();
+                break;
+            case GAMEPLAY_VS_COMPUTER:
+                updateVsComputerGame();
+                break;
+            case GAME_OVER:
+                updateGameOverScreen();
+                break;
+            default: break;
+        }
+
+        BeginDrawing();
+            ClearBackground(RAYWHITE);
+
+            switch (currentScreen) {
+                case MENU: {
+                    DrawText("TIC-TAC-TOE GAME", (screenWidth - MeasureText("TIC-TAC-TOE GAME", 50)) / 2, 80, 50, DARKGRAY);
+
+                    DrawRectangleRec(menuBtnTwoPlayer, LIGHTGRAY);
+                    DrawRectangleLinesEx(menuBtnTwoPlayer, 2, DARKGRAY);
+                    DrawText("Human vs. Human", menuBtnTwoPlayer.x + (menuBtnTwoPlayer.width - MeasureText("Human vs. Human", 30))/2,
+                             menuBtnTwoPlayer.y + (menuBtnTwoPlayer.height - 30)/2, 30, BLACK);
+
+                    DrawRectangleRec(menuBtnVsComputer, LIGHTGRAY);
+                    DrawRectangleLinesEx(menuBtnVsComputer, 2, DARKGRAY);
+                    DrawText("Human vs. Computer", menuBtnVsComputer.x + (menuBtnVsComputer.width - MeasureText("Human vs. Computer", 30))/2,
+                             menuBtnVsComputer.y + (menuBtnVsComputer.height - 30)/2, 30, BLACK);
+                } break;
+
+                case GAMEPLAY_TWO_PLAYER:
+                case GAMEPLAY_VS_COMPUTER: {
+                    drawBoardGrid();
+                    drawMarks();
+                    drawGameMessages();
+                } break;
+
+                case GAME_OVER: {
+                    drawBoardGrid();
+                    drawMarks();
+
+                    const char* resultText = "";
+                    Color resultColor;
+                    if (gameWinner == 'X' || gameWinner == 'O') {
+                        resultText = TextFormat("%c WINS!", gameWinner);
+                        resultColor = GREEN;
+                    } else {
+                        resultText = "IT'S A DRAW!";
+                        resultColor = ORANGE;
+                    }
+                    int resultTextWidth = MeasureText(resultText, 50);
+                    DrawText(resultText, (screenWidth - resultTextWidth) / 2, BOARD_OFFSET_Y + BOARD_SIZE_PIXELS / 2 - 50, 50, resultColor);
+
+                    DrawRectangleRec(playAgainBtn, SKYBLUE);
+                    DrawRectangleLinesEx(playAgainBtn, 2, BLUE);
+                    DrawText("Play Again", playAgainBtn.x + (playAgainBtn.width - MeasureText("Play Again", 25))/2,
+                             playAgainBtn.y + (playAgainBtn.height - 25)/2, 25, DARKBLUE);
+
+                    DrawRectangleRec(exitGameBtn, LIGHTGRAY);
+                    DrawRectangleLinesEx(exitGameBtn, 2, DARKGRAY);
+                    DrawText("Exit Game", exitGameBtn.x + (exitGameBtn.width - MeasureText("Exit Game", 25))/2,
+                             exitGameBtn.y + (exitGameBtn.height - 25)/2, 25, BLACK);
+                } break;
+
+                default: break;
+            }
+
+        EndDrawing();
+    }
+
+    UnloadTexture( (Texture2D){0} );
+    CloseWindow();
+    return 0;
+}
